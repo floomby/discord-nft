@@ -1,4 +1,14 @@
-// BURNING TOKENS BREAKS THIS (I think)
+// The amount I am using the database seems antithetical to the whole ideas of having a smart contract manage this
+// Note that burning tokens breaks transfering (badly) if the contract is untracked (I will write the code to fix this at some point)
+
+// TODO
+// * I need to put the blockchain searching code from that other thing I made into here to find all the interactions for the contract so we can show transfers
+// * Viewing nfts on discord
+// * Change the smart contract to keep the metadata on ipfs
+// * Proper way to burn tokens without having to jankily interact with the contract
+// * Gas estimation
+// * Transfer gas to the minting acount to run the transaction (or change the minting to run from the creator account (this requires adding them to the mint role which also takes gas thought so idk))
+// * Grab the metamask integration stuff form the test site and serve it (I need ssl for this either a cert for the ec2 server or just use realm)
 
 const { Client, Intents } = require("discord.js");
 const request = require("request");
@@ -25,7 +35,8 @@ let waccount = web3.eth.accounts.wallet.add(keys.wallet_key);
 
 const deploy = process.argv.includes("--deploy");
 
-let discords;
+// db collections (ikr, good names....)
+let discords, contractmap;
 let contract;
 // Yes this will be garbage if deploying
 let contractAddress;
@@ -34,6 +45,7 @@ if (!deploy) {
 }
 
 let mintSemaphore = false;
+let untracked = false;
 
 let transferNFT = (msg, to, from, tokenID) => {
     contract.methods.transferFrom(from, to, tokenID).send({
@@ -72,13 +84,20 @@ let doMint = (msg, toAddress, ipfshash, tokenID) => {
             if (confirmationNumber === 0) {
                 console.dir(["confirmation (mint)", confirmationNumber, receipt]);
                 msg.reply(`Mint completed`);
-                mintSemaphore = false;
                 const doc = {
                     ipfshash: ipfshash,
                     contract: contractAddress,
                     tokenID: tokenID 
                 };
                 const result = await discords.insertOne(doc);
+                if (!untracked) {
+                    try {
+                        await contractmap.updateOne({ address: contractAddress }, { $inc: { minted: 1 } });
+                    } catch(err) {
+                        console.err("Unable to write to write minting data to contract collection:\n" + err);
+                    }
+                }
+                mintSemaphore = false;
                 transferNFT(msg, toAddress, waccount.address, tokenID);
             }
         })
@@ -97,7 +116,13 @@ let ipfsize = async (url, msg, toAddress) => {
         await new Promise(v => setTimeout(v, 5000));
     }
 
-    let tokenIdx = parseInt(await contract.methods.totalSupply().call());
+    let tokenIdx;
+    if (untracked) {
+        tokenIdx = parseInt(await contract.methods.totalSupply().call());
+    } else {
+        const doc = await contractmap.findOne({ address: contractAddress });
+        tokenIdx = doc.minted;
+    }
 
     https.get(url, res => {
         res.on("error", err => {
@@ -154,7 +179,7 @@ let go = async () => {
     await client.connect();
     const database = client.db("discorddb");
     discords = database.collection("discords");
-    let contractmap = database.collection("contractmap");
+    contractmap = database.collection("contractmap");
     const nftname = "Discord nfts";
     const nftsymbol = "DNFT";
 
@@ -183,7 +208,8 @@ let go = async () => {
                     uid: uid,
                     address: receipt.contractAddress,
                     name: nftname,
-                    description: "Made by nft discord bot"
+                    description: "Made by nft discord bot",
+                    minted: 0
                 };
                 const result = await contractmap.insertOne(doc);
                 process.exit(0);
@@ -200,6 +226,12 @@ let go = async () => {
         }
 
         const app = express();
+
+        const contractCheck = await contractmap.findOne({ address: contractAddress });
+        if (!contractCheck) {
+            console.log("Warning this is an untracked contract");
+            untracked = true;
+        }
 
         app.get("/metadata", async (req, res) => {
             try {
@@ -266,8 +298,16 @@ let go = async () => {
                     msg.reply("Bad command");
                 }
             }
-            if (msg.content.split(" ")[0] === "!nft-contract") {
+            if (msg.content === "!nft-token-supply") {
+                const supply = parseInt(await contract.methods.totalSupply().call());
+                msg.reply(`There are ${supply} tokens in circulation`);
+            }
+            if (msg.content === "!nft-contract") {
                 msg.reply(`Contract of minting is ${contractAddress}`);
+            }
+            if (msg.content === "!blockchain-latest-block") {
+                const latest = await web3.eth.getBlockNumber();
+                msg.reply(`Latest block is ${latest}`);
             }
         });
     }
