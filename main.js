@@ -8,7 +8,7 @@
 // * Proper way to burn tokens without having to jankily interact with the contract
 // * Gas estimation
 // * Transfer gas to the minting acount to run the transaction (or change the minting to run from the creator account (this requires adding them to the mint role which also takes gas thought so idk))
-// * Grab the metamask integration stuff form the test site and serve it (I need ssl for this either a cert for the ec2 server or just use realm)
+// * Grab the metamask integration stuff form the test site and serve it (I need ssl for this either a cert for the ec2 server or just use realm and static hosting from github)
 
 const { Client, Intents } = require("discord.js");
 const request = require("request");
@@ -21,6 +21,17 @@ const express = require('express');
 let web3 = new Web3("https://api.s0.b.hmny.io");
 
 const keys = require("./keys");
+
+let credentials = {};
+
+if (keys.is_deployment) {
+    credentials.key = fs.readFileSync("/etc/letsencrypt/live/discord-bot.floomby.us/privkey.pem", "utf8");
+    credentials.cert = fs.readFileSync("/etc/letsencrypt/live/discord-bot.floomby.us/cert.pem", "utf8");
+    credentials.ca = fs.readFileSync("/etc/letsencrypt/live/discord-bot.floomby.us/chain.pem", "utf8");
+} else {
+    credentials.key = fs.readFileSync("./sslcert/cert.key", "utf8");
+    credentials.cert = fs.readFileSync("./sslcert/cert.pem", "utf8");
+}
 
 MongoClient = require('mongodb').MongoClient
 const client = new MongoClient(keys.mongo_uri);
@@ -250,8 +261,13 @@ let go = async () => {
             }
         });
 
-        app.listen(keys.http_port, () => {
-            console.log(`Example app listening on port ${keys.http_port}`);
+        // app.listen(keys.http_port, () => {
+        //     console.log(`Listening on port ${keys.http_port}`);
+        // });
+
+        const httpsServer = https.createServer(credentials, app);
+        httpsServer.listen(keys.https_port, () => {
+            console.log(`Running on port ${keys.https_port}`);
         });
 
         contract = new web3.eth.Contract(abi, contractAddress);

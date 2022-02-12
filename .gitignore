@@ -1,2 +1,4 @@
 node_modules
 keys.js
+sslcert/cert.key
+sslcert/cert.pem
