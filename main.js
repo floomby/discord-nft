@@ -164,7 +164,7 @@ let go = async () => {
     
         mintingContract.deploy({
             data: code,
-            arguments: [nftname, nftsymbol, `/metadata?uid=${uid}&id=`]
+            arguments: [nftname, nftsymbol, `${keys.metadata_url}/metadata?uid=${uid}&id=`]
         })
         .send({
             from: waccount.address,
