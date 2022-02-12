@@ -6,6 +6,7 @@ const https = require("https");
 const fs = require("fs");
 const Web3 = require("web3");
 const { v4: uuidv4 } = require('uuid');
+const express = require('express');
 
 let web3 = new Web3("https://api.s0.b.hmny.io");
 
@@ -154,14 +155,16 @@ let go = async () => {
     const database = client.db("discorddb");
     discords = database.collection("discords");
     let contractmap = database.collection("contractmap");
-    
+    const nftname = "Discord nfts";
+    const nftsymbol = "DNFT";
+
     if (deploy) {
         const uid = uuidv4();
         const mintingContract = new web3.eth.Contract(abi);
     
         mintingContract.deploy({
             data: code,
-            arguments: ["Discord nfts", "DNFT", `realm endpoint (not in place yet)?uid=${uid}&id=`]
+            arguments: [nftname, nftsymbol, `/metadata?uid=${uid}&id=`]
         })
         .send({
             from: waccount.address,
@@ -178,7 +181,9 @@ let go = async () => {
                 console.dir(["confirmation", confirmationNumber, receipt]);
                 const doc = {
                     uid: uid,
-                    address: receipt.contractAddress
+                    address: receipt.contractAddress,
+                    name: nftname,
+                    description: "Made by nft discord bot"
                 };
                 const result = await contractmap.insertOne(doc);
                 process.exit(0);
@@ -193,6 +198,29 @@ let go = async () => {
             console.error("Missing contract address with which to interact");
             process.exit(1);
         }
+
+        const app = express();
+
+        app.get("/metadata", async (req, res) => {
+            try {
+                const doc = await contractmap.findOne({ uid: req.query.uid });
+                console.dir(doc);
+                const doc2 = await discords.findOne({ contract: doc.address, tokenID: parseInt(req.query.id) });
+                
+                res.send({
+                    image: `https://cloudflare-ipfs.com/ipfs/${doc2.ipfshash}`,
+                    description: doc.description,
+                    name: doc.name
+                });
+            } catch(err) {
+                console.dir(["error getting metadata", err]);
+                res.send({});
+            }
+        });
+
+        app.listen(keys.http_port, () => {
+            console.log(`Example app listening on port ${keys.http_port}`);
+        });
 
         contract = new web3.eth.Contract(abi, contractAddress);
 
@@ -224,6 +252,15 @@ let go = async () => {
                 try {
                     let id = parseInt(msg.content.split(" ")[1]);
                     let addr = await contract.methods.ownerOf(id).call();
+                    msg.reply(`The owner of token #${id} is ${addr}`);
+                } catch {
+                    msg.reply("Bad command");
+                }
+            }
+            if (msg.content.split(" ")[0] === "!nft-token-uri") {
+                try {
+                    let id = parseInt(msg.content.split(" ")[1]);
+                    let addr = await contract.methods.tokenURI(id).call();
                     msg.reply(`The owner of token #${id} is ${addr}`);
                 } catch {
                     msg.reply("Bad command");
