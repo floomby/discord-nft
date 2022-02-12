@@ -1,4 +1,4 @@
-// BURNING TOKENS BREAKS THIS
+// BURNING TOKENS BREAKS THIS (I think)
 
 const { Client, Intents } = require("discord.js");
 const request = require("request");
@@ -260,8 +260,8 @@ let go = async () => {
             if (msg.content.split(" ")[0] === "!nft-token-uri") {
                 try {
                     let id = parseInt(msg.content.split(" ")[1]);
-                    let addr = await contract.methods.tokenURI(id).call();
-                    msg.reply(`The owner of token #${id} is ${addr}`);
+                    let uri = await contract.methods.tokenURI(id).call();
+                    msg.reply(`The uri of token #${id} is ${uri}`);
                 } catch {
                     msg.reply("Bad command");
                 }
