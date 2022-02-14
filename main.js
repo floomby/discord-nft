@@ -17,8 +17,34 @@ const fs = require("fs");
 const Web3 = require("web3");
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
+const cors = require("cors");
 
-let web3 = new Web3("https://api.s0.b.hmny.io");
+const rpc = "https://api.s0.b.hmny.io";
+
+function blockchainEncodeAddress(address) {
+    if (!/^(0x)/.test(address)) {
+        address = "0x" + address;
+    }
+    return address.toLowerCase();
+}
+
+const bytecode = JSON.parse(fs.readFileSync("hrc721.evm.json"));
+const abi = JSON.parse(fs.readFileSync("hrc721.abi.json"));
+const code = "0x" + bytecode.object;
+
+let loadedContracts = new Map();
+
+function getContract(address) {
+    address = blockchainEncodeAddress(address);
+    let ret = loadedContracts.get(address);
+    if (!ret) {
+        ret = new web3.eth.Contract(abi, address);
+        loadedContracts.set(address, ret);
+    }
+    return ret;
+}
+
+let web3 = new Web3(rpc);
 
 const keys = require("./keys");
 
@@ -35,10 +61,6 @@ if (keys.is_deployment) {
 
 MongoClient = require('mongodb').MongoClient
 const client = new MongoClient(keys.mongo_uri);
-
-const bytecode = JSON.parse(fs.readFileSync("hrc721.evm.json"));
-const abi = JSON.parse(fs.readFileSync("hrc721.abi.json"));
-const code = "0x" + bytecode.object;
 
 const dclient = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
 
@@ -186,6 +208,16 @@ let ipfsize = async (url, msg, toAddress) => {
     });
 }
 
+let tokenuriLookup = (con, owner, idx, acm, cb) => {
+    if (idx === -1) return cb(acm);
+    con.methods.tokenOfOwnerByIndex(owner, idx).call().then(id => {
+        con.methods.tokenURI(id).call().then(uri => {
+            acm.push(uri);
+            tokenuriLookup(con, owner, idx - 1, acm, cb);
+        }).catch(console.error);
+    }).catch(console.error);
+};
+
 let go = async () => {
     await client.connect();
     const database = client.db("discorddb");
@@ -231,12 +263,16 @@ let go = async () => {
             // doMint(newContractInstance, count, name, symbol, ipfscids, 0, res);
         });
     } else {
-        if (!contractAddress) {
-            console.error("Missing contract address with which to interact");
+        if (!web3.utils.isAddress(contractAddress)) {
+            console.error("Invalid contract address");
             process.exit(1);
         }
 
         const app = express();
+
+        if (!keys.is_deployment) {
+            app.use(cors());
+        }
 
         const contractCheck = await contractmap.findOne({ address: contractAddress });
         if (!contractCheck) {
@@ -261,6 +297,25 @@ let go = async () => {
             }
         });
 
+        app.get("/which-rpc", (req, res) => {
+            res.send({ rpc: rpc });
+        });
+
+        app.get("/tokens-for", (req, res) => {
+            try {
+                if (!web3.utils.isAddress(req.query.contract)) throw Error("Invalid contract address");
+                if (!web3.utils.isAddress(req.query.owner)) throw Error("Invalid owner address");
+                let con = getContract(req.query.contract);
+                con.methods.balanceOf(req.query.owner).call().then(count => {
+                    tokenuriLookup(con, req.query.owner, count - 1, [], acm => { res.send({ uris: acm })});
+                }).catch(console.error);
+            } catch(err) {
+                console.error(err);
+            }
+        });
+
+        app.use(express.static("./frontend/build"));
+
         // app.listen(keys.http_port, () => {
         //     console.log(`Listening on port ${keys.http_port}`);
         // });
@@ -271,6 +326,7 @@ let go = async () => {
         });
 
         contract = new web3.eth.Contract(abi, contractAddress);
+        loadedContracts.set(blockchainEncodeAddress(contractAddress), contract);
 
         // Mongo optimizes sort().limit() even though it feels wrong
         // let maxDoc = await discords.find({ contract: contractAddress }).sort({ tokenID: -1}).limit(1);
