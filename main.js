@@ -18,6 +18,7 @@ const Web3 = require("web3");
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const cors = require("cors");
+const BN = require('bn.js');
 
 const rpc = "https://api.s0.b.hmny.io";
 
@@ -33,6 +34,8 @@ const abi = JSON.parse(fs.readFileSync("hrc721.abi.json"));
 const code = "0x" + bytecode.object;
 
 let loadedContracts = new Map();
+
+const mintingPrice = new BN("100000", 10);
 
 function getContract(address) {
     address = blockchainEncodeAddress(address);
@@ -144,6 +147,8 @@ let doMint = (msg, toAddress, ipfshash, tokenID) => {
 };
 
 let ipfsize = async (url, msg, toAddress) => {
+    console.dir(["toAddres", toAddress]);
+
     while (mintSemaphore) {
         console.log("Hit semaphore (I will be dumb and change the code and this message will help me know I forgot to unsignal it at some point)");
         await new Promise(v => setTimeout(v, 5000));
@@ -224,7 +229,7 @@ let messagePaymentLinkMap = new Map();
 
 let genPaymentLink = async (msg) => {
     const uid = uuidv4();
-    await payments.insertOne({ uid: uid, used: false, address: "", txid: "" });
+    await payments.insertOne({ uid: uid, used: false, address: "", txid: "", url: msg.attachments.first().url });
     // return `${keys.metadata_url}?pid=${uid}`
     messagePaymentLinkMap.set(uid, msg);
     return `http://localhost:3000?pid=${uid}`;
@@ -353,7 +358,22 @@ let go = async () => {
         app.get("/txid-for-uid", async (req, res) => {
             try {
                 let doc = await payments.findOneAndUpdate({ uid: req.query.uid, txid: "" }, { $set: { txid: req.query.txid }});
-                if (doc) return res.send(true);
+                if (doc) {
+                    console.dir(doc);
+                    res.send(true);
+                    console.dir(req.query.txid);
+                    // TODO We need to wait for the transaction to be confirmed by the network just waiting is stupid
+                    // Probably the best way to do this is to check the pending transactions and then make sure it is there and wait for it to quit being pending by either being confirmed or rejected
+                    await new Promise(v => setTimeout(v, 10000));
+                    web3.eth.getTransaction(req.query.txid).then(async tx => {
+                        const val = new BN(tx.value, 10);
+                        if (val >= mintingPrice) {
+                            let msg = messagePaymentLinkMap.get(req.query.uid);
+                            ipfsize(msg.attachments.first().url, msg, doc.value.address);
+                        }
+                    });
+                    return;
+                }
             } catch(err) {
                 console.log(err);
             }
