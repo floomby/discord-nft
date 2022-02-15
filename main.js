@@ -232,7 +232,7 @@ let genPaymentLink = async (msg) => {
     await payments.insertOne({ uid: uid, used: false, address: "", txid: "", url: msg.attachments.first().url });
     // return `${keys.metadata_url}?pid=${uid}`
     messagePaymentLinkMap.set(uid, msg);
-    return `http://localhost:3000?pid=${uid}`;
+    return `${keys.metamask_link}?pid=${uid}`;
 }
 
 let go = async () => {
