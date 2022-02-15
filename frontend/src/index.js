@@ -265,6 +265,8 @@ class Transaction extends React.Component {
                                         return response.json();
                                     }).then(json => {
                                         if (!json) throw new Error("Unable to communicate transaction id (This is a real problem and it mean the server will not look for the transaction even though it has already completed)");
+                                        this.props.setViewing(true);
+                                        window.location.search = "";
                                     }).catch(console.error);
                                 } catch (addError) {
                                     console.dir(addError)
@@ -293,12 +295,17 @@ class Page extends React.Component {
     constructor(props) {
         super(props);
         this.state = { viewing: window.location.search.length === 0 };
+        this.setViewing = this.setViewing.bind(this);
+    }
+
+    setViewing(viewing) {
+        this.setState({ viewing: viewing });
     }
 
     render() {
         return (
             <div>
-                { this.state.viewing ? <Viewer /> : <Transaction uid={window.location.search.split("=")[1]} />}
+                { this.state.viewing ? <Viewer /> : <Transaction setViewing={this.setViewing} uid={window.location.search.split("=")[1]} />}
             </div>
         );
     }
