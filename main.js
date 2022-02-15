@@ -4,11 +4,11 @@
 // TODO
 // * I need to put the blockchain searching code from that other thing I made into here to find all the interactions for the contract so we can show transfers
 // * Viewing nfts on discord
-// * Change the smart contract to keep the metadata on ipfs
+// * Change the smart contract to keep the metadata on ipfs (maybe unwanted idk)
 // * Proper way to burn tokens without having to jankily interact with the contract
-// * Gas estimation
+// * Correct gas estimation
 // * Transfer gas to the minting acount to run the transaction (or change the minting to run from the creator account (this requires adding them to the mint role which also takes gas thought so idk))
-// * Grab the metamask integration stuff form the test site and serve it (I need ssl for this either a cert for the ec2 server or just use realm and static hosting from github)
+// * If I keep going with this project I should really switch to using mongoose cause it supports odm and stuff
 
 const { Client, Intents } = require("discord.js");
 const request = require("request");
@@ -69,7 +69,7 @@ let waccount = web3.eth.accounts.wallet.add(keys.wallet_key);
 const deploy = process.argv.includes("--deploy");
 
 // db collections (ikr, good names....)
-let discords, contractmap;
+let discords, contractmap, payments;
 let contract;
 // Yes this will be garbage if deploying
 let contractAddress;
@@ -218,11 +218,24 @@ let tokenuriLookup = (con, owner, idx, acm, cb) => {
     }).catch(console.error);
 };
 
+let metadataUri = uid => `${keys.metadata_url}/metadata?uid=${uid}&id=`;
+
+let messagePaymentLinkMap = new Map();
+
+let genPaymentLink = async (msg) => {
+    const uid = uuidv4();
+    await payments.insertOne({ uid: uid, used: false, address: "", txid: "" });
+    // return `${keys.metadata_url}?pid=${uid}`
+    messagePaymentLinkMap.set(uid, msg);
+    return `http://localhost:3000?pid=${uid}`;
+}
+
 let go = async () => {
     await client.connect();
     const database = client.db("discorddb");
     discords = database.collection("discords");
     contractmap = database.collection("contractmap");
+    payments = database.collection("payments");
     const nftname = "Discord nfts";
     const nftsymbol = "DNFT";
 
@@ -232,7 +245,7 @@ let go = async () => {
     
         mintingContract.deploy({
             data: code,
-            arguments: [nftname, nftsymbol, `${keys.metadata_url}/metadata?uid=${uid}&id=`]
+            arguments: [nftname, nftsymbol, metadataUri(uid)]
         })
         .send({
             from: waccount.address,
@@ -252,7 +265,8 @@ let go = async () => {
                     address: receipt.contractAddress,
                     name: nftname,
                     description: "Made by nft discord bot",
-                    minted: 0
+                    minted: 0,
+                    metadata: metadataUri("")
                 };
                 const result = await contractmap.insertOne(doc);
                 process.exit(0);
@@ -301,6 +315,51 @@ let go = async () => {
             res.send({ rpc: rpc });
         });
 
+        app.get("/mint-address", (req, res) => {
+            res.send(waccount.address);
+        });
+
+        app.get("/payment", async (req, res) => {
+            try {
+                let doc = await payments.findOne({ uid: req.query.uid, used: false });
+                if (doc) {
+                    await payments.updateOne({ uid: req.query.uid, used: false }, { $set: { used: true }});
+                    res.send(true);
+                }
+                else (res.send(false));
+            } catch(err) {
+                console.log(err);
+                res.send(false);
+            }
+        });
+
+        app.get("/set-payment-uid-address", async (req, res) => {
+            try {
+                if (!web3.utils.isAddress(req.query.address)) {
+                    res.send(false);
+                    return;
+                }
+                let doc = await payments.findOneAndUpdate({ uid: req.query.uid, address: "" }, { $set: { address: req.query.address }});
+                if (doc) {
+                    res.send(true);
+                }
+                else res.send(false);
+            } catch(err) {
+                console.log(err);
+                res.send(false);
+            }
+        });
+
+        app.get("/txid-for-uid", async (req, res) => {
+            try {
+                let doc = await payments.findOneAndUpdate({ uid: req.query.uid, txid: "" }, { $set: { txid: req.query.txid }});
+                if (doc) return res.send(true);
+            } catch(err) {
+                console.log(err);
+            }
+            res.send(false);
+        });
+
         app.get("/tokens-for", (req, res) => {
             try {
                 if (!web3.utils.isAddress(req.query.contract)) throw Error("Invalid contract address");
@@ -342,14 +401,17 @@ let go = async () => {
                     msg.reply("Missing attachment");
                     return;
                 }
-                let toAddress = msg.content.split(" ")[1];
-                if (!web3.utils.isAddress(toAddress)) {
-                    msg.reply("Valid address not provided");
-                    return;
-                }
-                ipfsize(msg.attachments.first().url, msg, toAddress);
+                // let toAddress = msg.content.split(" ")[1];
+                // if (!web3.utils.isAddress(toAddress)) {
+                //     msg.reply("Valid address not provided");
+                //     return;
+                // }
+                msg.author.send(`Payment link ${await genPaymentLink(msg)}`);
+
+                // ipfsize(msg.attachments.first().url, msg, toAddress);
+
                 // msg.reply(`Making nft of ${msg.attachments.first().url}`);
-                msg.reply(`Making nft ...`);
+                // msg.reply(`Making nft ...`);
                 // console.log(`Making nft of ${msg.attachments.first().url}`);
             }
             if (msg.content.split(" ")[0] === "!nft-owner-of") {

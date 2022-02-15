@@ -208,10 +208,106 @@ class Viewer extends React.Component {
     }
 }
 
+class Transaction extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { valid: false, mintAddress: "", address: "", invalid: false };
+
+        // This needs refactoring probably
+        fetch(`${config.backend}/payment?uid=${this.props.uid}`).then(response => {
+            if (!response.ok) throw new Error("Unable to access backend: " + response.status);
+            return response.json();
+        }).then(json => {
+            this.setState({ valid: json, invalid: !json });
+            if (!json) return;
+            fetch(`${config.backend}/mint-address`).then(response => {
+                if (!response.ok) throw new Error("Unable to access backend: " + response.status);
+                return response.text();
+            }).then(text => {
+                this.setState({ mintAddress: text });
+
+                if (window.ethereum) {
+                    window.ethereum.request({ method: "eth_requestAccounts" })
+                        .then(accounts => {
+                            this.setState({ address: accounts[0] });
+                            fetch(`${config.backend}/set-payment-uid-address?uid=${this.props.uid}&address=${accounts[0]}`).then(response => {
+                                if (!response.ok) throw new Error("Unable to access backend: " + response.status);
+                                return response.json();
+                            }).then(async json => {
+                                if (json == false) throw new Error("Invalid request or something");
+                                try {
+                                    // switch chains
+                                    await window.ethereum.request({
+                                        method: "wallet_addEthereumChain",
+                                        params: [
+                                            {
+                                                chainId: "0x6357D2E0",
+                                                chainName: "ONE",
+                                                rpcUrls: ["https://api.s0.b.hmny.io"],
+                                            },
+                                        ],
+                                    });
+                                    const transactionParameters = {
+                                        // gasPrice: "30000", // Metamask will estimate this for us
+                                        gas: "210000", // idk man
+                                        to: this.state.mintAddress,
+                                        from: accounts[0],
+                                        value: "0x100000000000000", // TODO get figuring this value out somehow (it needs to pay for the minting costs which the backend has yet to preform)
+                                    };
+                            
+                                    const txid = await window.ethereum.request({
+                                        method: "eth_sendTransaction",
+                                        params: [transactionParameters],
+                                    });
+        
+                                    fetch(`${config.backend}/txid-for-uid?uid=${this.props.uid}&txid=${txid}`).then(response => {
+                                        if (!response.ok) throw new Error("Unable to access backend: " + response.status);
+                                        return response.json();
+                                    }).then(json => {
+                                        if (!json) throw new Error("Unable to communicate transaction id (This is a real problem and it mean the server will not look for the transaction even though it has already completed)");
+                                    }).catch(console.error);
+                                } catch (addError) {
+                                    console.dir(addError)
+                                }
+                            }).catch(console.error);
+                        })
+                        .catch(err => console.dir(["metamask error", err]));
+                } else {
+                    alert("Metamask missing");
+                }
+            }).catch(console.error);
+        }).catch(console.error);
+    }
+
+    render() {
+        return (
+            <div>
+                {this.state.valid && this.state.mintAddress.length > 0 && <p>Address of minting is {this.state.mintAddress}</p>}
+                {this.state.invalid && <p>This link appears to be invalid. (It has possibly already been used as these are one time use links.)</p>}
+            </div>
+        );
+    }
+}
+
+class Page extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { viewing: window.location.search.length === 0 };
+    }
+
+    render() {
+        return (
+            <div>
+                { this.state.viewing ? <Viewer /> : <Transaction uid={window.location.search.split("=")[1]} />}
+            </div>
+        );
+    }
+}
+
 ReactDOM.render(
     (
         <div className="p-3">
-            <Viewer />
+            <Page />
         </div>
     ),
     document.getElementById("root")
