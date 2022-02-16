@@ -320,30 +320,7 @@ class Page extends React.Component {
         );
     }
 }
-/*class Page extends React.Component {
-    constructor(props) {
-        super(props);
-        let params = new Map();
-        // window.location.search;
-        this.state = { viewing: !params.get("pid"), address: params.get("address"), contract: param.get("contract"), uid: params.get("pid") };
-        this.setViewing = this.setViewing.bind(this);
-    }
 
-    setViewing(viewing) {
-        this.setState({ viewing: viewing });
-    }
-
-    render() {
-        return (
-            <div>
-                { this.state.viewing ? <Viewer address={this.state.address} contract={this.state.contract} />
-                : <Transaction setViewing={this.setViewing} uid={this.state.uid} />}
-            </div>
-        );
-    }
-}
-
-*/
 ReactDOM.render(
     (
         <div className="p-3">
