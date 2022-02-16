@@ -253,10 +253,10 @@ class Transaction extends React.Component {
                                     });
                                     const transactionParameters = {
                                         // gasPrice: "30000", // Metamask will estimate this for us
-                                        gas: "210000", // idk man
+                                        gas: "21000", // idk man
                                         to: this.state.mintAddress,
                                         from: accounts[0],
-                                        value: "0x100000000000000", // TODO get figuring this value out somehow (it needs to pay for the minting costs which the backend has yet to preform)
+                                        value: config.mint_price, // TODO get figuring this value out somehow (it needs to pay for the minting costs which the backend has yet to preform)
                                     };
                             
                                     const txid = await window.ethereum.request({
@@ -288,7 +288,7 @@ class Transaction extends React.Component {
     render() {
         return (
             <div>
-                {this.state.valid && this.state.mintAddress.length > 0 && <p>Address of minting is {this.state.mintAddress}</p>}
+                {this.state.valid && this.state.mintAddress.length > 0 && <p>Use metamask to complete the minting.</p>}
                 {this.state.invalid && <p>This link appears to be invalid. (It has possibly already been used as these are one time use links.)</p>}
             </div>
         );

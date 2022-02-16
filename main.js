@@ -35,7 +35,9 @@ const code = "0x" + bytecode.object;
 
 let loadedContracts = new Map();
 
-const mintingPrice = new BN("100000", 10);
+const keys = require("./keys");
+
+const mintingPrice = new BN(keys.minting_price, 10);
 
 function getContract(address) {
     address = blockchainEncodeAddress(address);
@@ -48,8 +50,6 @@ function getContract(address) {
 }
 
 let web3 = new Web3(rpc);
-
-const keys = require("./keys");
 
 let credentials = {};
 
