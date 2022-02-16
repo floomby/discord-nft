@@ -94,7 +94,7 @@ let transferNFT = (msg, to, from, tokenID) => {
     .on("confirmation", async (confirmationNumber, receipt) => {
         if (confirmationNumber === 0) {
             console.dir(["confirmation (transfer)", confirmationNumber, receipt]);
-            msg.reply(`Transfered nft to ${to}`);
+            msg.reply(`View nft at ${keys.metamask_link}/?address=${to}&contract=${contractAddress}`);
         }
     })
     .on("receipt", receipt => {
@@ -426,7 +426,7 @@ let go = async () => {
                 //     msg.reply("Valid address not provided");
                 //     return;
                 // }
-                msg.author.send(`Payment link ${await genPaymentLink(msg)}`);
+                msg.author.send(`Minting link ${await genPaymentLink(msg)}`);
 
                 // ipfsize(msg.attachments.first().url, msg, toAddress);
 

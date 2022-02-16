@@ -141,7 +141,7 @@ class ContractList extends React.Component {
 class Viewer extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { address: "", contracts: [], contractAddress: "" };
+        this.state = { address: this.props.address ? this.props.address : "", contracts: [], contractAddress: this.props.contract ? this.props.contract : "" };
         this.handleAddressChange = this.handleAddressChange.bind(this);
         this.handleContractChange = this.handleContractChange.bind(this);
         this.connectToMetamask = this.connectToMetamask.bind(this);
@@ -152,6 +152,10 @@ class Viewer extends React.Component {
             if (!response.ok) throw new Error("Unable to talk to backend: " + response.status);
             return response.json();
         }).then(json => document.title = `NFTs on ${json["rpc"].split("//")[1]}`).catch(console.error);
+    }
+
+    componentDidMount() {
+        if (this.state.contractAddress) this.addContract();
     }
 
     handleAddressChange(e) {
@@ -167,7 +171,7 @@ class Viewer extends React.Component {
     }
 
     addContract(e) {
-        e.preventDefault();
+        if (e) e.preventDefault();
         let addr = this.state.contractAddress;
         if (!isAddress(addr)) return;
         addr = blockchainEncodeAddress(addr)
@@ -234,7 +238,7 @@ class Transaction extends React.Component {
                                 if (!response.ok) throw new Error("Unable to access backend: " + response.status);
                                 return response.json();
                             }).then(async json => {
-                                if (json == false) throw new Error("Invalid request or something");
+                                if (json === false) throw new Error("Invalid request or something");
                                 try {
                                     // switch chains
                                     await window.ethereum.request({
@@ -294,7 +298,12 @@ class Transaction extends React.Component {
 class Page extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { viewing: window.location.search.length === 0 };
+        let params = new Map();
+        window.location.search.substring(1).split("&").forEach(str => {
+            const tmp = str.split("=");
+            params.set(tmp[0], tmp[1]);
+        });
+        this.state = { viewing: !params.get("pid"), address: params.get("address"), contract: params.get("contract"), uid: params.get("pid") };
         this.setViewing = this.setViewing.bind(this);
     }
 
@@ -305,12 +314,36 @@ class Page extends React.Component {
     render() {
         return (
             <div>
-                { this.state.viewing ? <Viewer /> : <Transaction setViewing={this.setViewing} uid={window.location.search.split("=")[1]} />}
+                { this.state.viewing ? <Viewer address={this.state.address} contract={this.state.contract} />
+                : <Transaction setViewing={this.setViewing} uid={this.state.uid} />}
+            </div>
+        );
+    }
+}
+/*class Page extends React.Component {
+    constructor(props) {
+        super(props);
+        let params = new Map();
+        // window.location.search;
+        this.state = { viewing: !params.get("pid"), address: params.get("address"), contract: param.get("contract"), uid: params.get("pid") };
+        this.setViewing = this.setViewing.bind(this);
+    }
+
+    setViewing(viewing) {
+        this.setState({ viewing: viewing });
+    }
+
+    render() {
+        return (
+            <div>
+                { this.state.viewing ? <Viewer address={this.state.address} contract={this.state.contract} />
+                : <Transaction setViewing={this.setViewing} uid={this.state.uid} />}
             </div>
         );
     }
 }
 
+*/
 ReactDOM.render(
     (
         <div className="p-3">
